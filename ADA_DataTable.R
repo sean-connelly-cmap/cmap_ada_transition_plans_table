@@ -12,9 +12,7 @@ library(here);library(janitor);library(clipr)
 library(readxl);library(openxlsx);library(purrr)
 # Table
 library(DT);library(htmlwidgets)
-# CMAP specific
-#library(cmapgeo);
-# library(cmapplot)
+
 
 
 ## 1b. Options -----
@@ -35,48 +33,40 @@ ada_raw <- read_excel("240314_ADACompliance.xlsx") %>%
 
 # 3. Clean data -----------------------------------------------------------
 
-# Select columns for table, select only plans with PDF link
-#ada_clean <- ada_raw %>% 
- # select(what_is_the_entity_name:when_was_the_self_evaluation_plan_created_or_most_recently_updated, link_to_the_self_evaluation) %>% 
-  #filter(!is.na(link_to_the_self_evaluation)) %>% 
-  #arrange(what_is_the_entity_name)
-
-#select columns for table, all towns
+# Select columns for table, all towns
 ada_clean_all <- ada_raw %>% 
-  select(what_is_the_entity_name,is_a_transition_plan_required,does_the_community_have_a_self_evaluation_plan, does_the_community_have_a_transition_plan,was_an_ada_coordinator_designated, is_there_a_publicly_available_grievance_procedure_for_the_ada, is_there_a_publicly_posted_notice_about_rights_under_the_ada, when_was_the_self_evaluation_plan_created_or_most_recently_updated, link_to_the_self_evaluation) %>% 
+  select(what_is_the_entity_name,
+         is_a_transition_plan_required,
+         does_the_community_have_a_self_evaluation_plan,
+         does_the_community_have_a_transition_plan,
+         was_an_ada_coordinator_designated,
+         is_there_a_publicly_available_grievance_procedure_for_the_ada,
+         is_there_a_publicly_posted_notice_about_rights_under_the_ada,
+         when_was_the_self_evaluation_plan_created_or_most_recently_updated,
+         link_to_the_self_evaluation) %>% 
   arrange(what_is_the_entity_name)
-ada_clean_all %>% tabyl(does_the_community_have_a_self_evaluation_plan)
 
-# Clean fields
-#ada_clean <- ada_clean %>% 
-  # Binaries to Yes/No
- # mutate(across(c(is_a_transition_plan_required,
-  #                does_the_community_have_a_self_evaluation_plan,
- #                 does_the_community_have_a_transition_plan),
- #               ~ifelse(. == 1, "Yes", "No")))
-  
-#Clean ada_clean_all
+# Clean ada_clean_all
 ada_clean_all <- ada_clean_all %>% 
-  # Binaries to Yes/No
+  # Binaries to Yes/No if only 1 and 0, add N/As if exist
   mutate(across(c(is_a_transition_plan_required,
                   does_the_community_have_a_self_evaluation_plan,
-                  does_the_community_have_a_transition_plan, was_an_ada_coordinator_designated,is_there_a_publicly_available_grievance_procedure_for_the_ada,is_there_a_publicly_posted_notice_about_rights_under_the_ada),
-                ~ifelse(. == 1, "Yes", "No")))
-##Add NA for empty rows
-ada_clean_all <- ada_clean_all %>% 
-mutate(across(1:9,~ifelse(is.na(.), "N/A",.)))
-
-ada_raw %>% filter(is.na(was_an_ada_coordinator_designated))
-ada_raw %>% tabyl(was_an_ada_coordinator_designated)
-
-# Create hyperlink for table
-#ada_clean <- ada_clean %>% 
- # mutate("pdf_link" = paste0('<a href="',
- #                            link_to_the_self_evaluation,
-#                             '" target="_blank">',
-#                             what_is_the_entity_name, '</a>')) %>% 
- # relocate(pdf_link, .before = 1)
-
+                  does_the_community_have_a_transition_plan,
+                  was_an_ada_coordinator_designated,
+                  is_there_a_publicly_available_grievance_procedure_for_the_ada,
+                  is_there_a_publicly_posted_notice_about_rights_under_the_ada,),
+                .fns = ~case_when(
+                  as.character(.) == "1" ~
+                             "Yes",
+                  as.character(.) == "0" ~
+                    "No",
+                  # Handle N/As
+                  is.na(.) ~
+                    "N/A",
+                  TRUE ~
+                    "N/A"))) %>% 
+  # Format date field
+  mutate("when_was_the_self_evaluation_plan_created_or_most_recently_updated" = excel_numeric_to_date(as.numeric(when_was_the_self_evaluation_plan_created_or_most_recently_updated)))
 
 # Create hyperlink for table ada_clean_all
 ada_clean_all <- ada_clean_all %>% 
@@ -92,6 +82,19 @@ ada_clean_all <- ada_clean_all %>%
 # R DT package, wrapper for the JavaScript DataTables library
 # Vignettes: https://rstudio.github.io/DT/
 # Documentation: https://cran.r-project.org/web/packages/DT/DT.pdf
+
+
+# Handle N/As for Date
+rowCallback <- c(
+  "function(row, data){",
+  "  for(var i=0; i<data.length; i++){",
+  "    if(data[i] === null){",
+  "      $('td:eq('+i+')', row).html('N/A')",
+  "        .css({'color': 'rgb(151,151,151)', 'font-style': 'italic'});",
+  "    }",
+  "  }",
+  "}"  
+)
 
 # Create table
 ada_dt <- datatable(ada_clean_all %>%
@@ -115,6 +118,8 @@ ada_dt <- datatable(ada_clean_all %>%
                                    scroller = TRUE,
                                    # Column headers
                                    fixedHeader = FALSE,
+                                   # N/A date fill
+                                   rowCallback = JS(rowCallback),
                                    # Add font family
                                    initComplete = JS(
                                      "function(settings, json) {",
