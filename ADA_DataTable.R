@@ -1,0 +1,146 @@
+
+# 1. Setup ----------------------------------------------------------------
+
+
+## 1a. Load libraries -----
+
+# Basics
+library(tidyverse);library(lubridate)
+# Utility
+library(here);library(janitor);library(clipr)
+# Excel loops, nested data
+library(readxl);library(openxlsx);library(purrr)
+# Table
+library(DT);library(htmlwidgets)
+# CMAP specific
+#library(cmapgeo);
+# library(cmapplot)
+
+
+## 1b. Options -----
+
+# Options, call stored Census API key, load fonts
+options(scipen = 1000, stringsAsFactors = FALSE)
+
+
+
+# 2. Ingest data ----------------------------------------------------------
+
+# Excel workbook download (manual)
+# Read in data
+ada_raw <- read_excel("240314_ADACompliance.xlsx") %>% 
+  clean_names()
+
+
+
+# 3. Clean data -----------------------------------------------------------
+
+# Select columns for table, select only plans with PDF link
+#ada_clean <- ada_raw %>% 
+ # select(what_is_the_entity_name:when_was_the_self_evaluation_plan_created_or_most_recently_updated, link_to_the_self_evaluation) %>% 
+  #filter(!is.na(link_to_the_self_evaluation)) %>% 
+  #arrange(what_is_the_entity_name)
+
+#select columns for table, all towns
+ada_clean_all <- ada_raw %>% 
+  select(what_is_the_entity_name,is_a_transition_plan_required,does_the_community_have_a_self_evaluation_plan, does_the_community_have_a_transition_plan,was_an_ada_coordinator_designated, is_there_a_publicly_available_grievance_procedure_for_the_ada, is_there_a_publicly_posted_notice_about_rights_under_the_ada, when_was_the_self_evaluation_plan_created_or_most_recently_updated, link_to_the_self_evaluation) %>% 
+  arrange(what_is_the_entity_name)
+ada_clean_all %>% tabyl(does_the_community_have_a_self_evaluation_plan)
+
+# Clean fields
+#ada_clean <- ada_clean %>% 
+  # Binaries to Yes/No
+ # mutate(across(c(is_a_transition_plan_required,
+  #                does_the_community_have_a_self_evaluation_plan,
+ #                 does_the_community_have_a_transition_plan),
+ #               ~ifelse(. == 1, "Yes", "No")))
+  
+#Clean ada_clean_all
+ada_clean_all <- ada_clean_all %>% 
+  # Binaries to Yes/No
+  mutate(across(c(is_a_transition_plan_required,
+                  does_the_community_have_a_self_evaluation_plan,
+                  does_the_community_have_a_transition_plan, was_an_ada_coordinator_designated,is_there_a_publicly_available_grievance_procedure_for_the_ada,is_there_a_publicly_posted_notice_about_rights_under_the_ada),
+                ~ifelse(. == 1, "Yes", "No")))
+##Add NA for empty rows
+ada_clean_all <- ada_clean_all %>% 
+mutate(across(1:9,~ifelse(is.na(.), "N/A",.)))
+
+ada_raw %>% filter(is.na(was_an_ada_coordinator_designated))
+ada_raw %>% tabyl(was_an_ada_coordinator_designated)
+
+# Create hyperlink for table
+#ada_clean <- ada_clean %>% 
+ # mutate("pdf_link" = paste0('<a href="',
+ #                            link_to_the_self_evaluation,
+#                             '" target="_blank">',
+#                             what_is_the_entity_name, '</a>')) %>% 
+ # relocate(pdf_link, .before = 1)
+
+
+# Create hyperlink for table ada_clean_all
+ada_clean_all <- ada_clean_all %>% 
+  mutate("pdf_link" = paste0('<a href="',
+                             link_to_the_self_evaluation,
+                             '" target="_blank">',
+                             what_is_the_entity_name, '</a>')) %>% 
+  relocate(pdf_link, .before = 1)
+
+# 4. DataTable ------------------------------------------------------------
+
+# Background
+# R DT package, wrapper for the JavaScript DataTables library
+# Vignettes: https://rstudio.github.io/DT/
+# Documentation: https://cran.r-project.org/web/packages/DT/DT.pdf
+
+# Create table
+ada_dt <- datatable(ada_clean_all %>%
+                      # Tidy df for table 
+                      rename("entity_name" = pdf_link) %>% 
+                      arrange(what_is_the_entity_name) %>% 
+                      select(-what_is_the_entity_name,
+                             -link_to_the_self_evaluation),
+                    # Formatting options, escape = FALSE to allow hyperlink HTML formatting
+                    extensions = "Scroller", escape = FALSE,
+                    style = "auto", class = "cell-border stripe", 
+                    rownames = FALSE, width = "100%", 
+                    options = list(# Page options
+                                   dom = ("Bfrti"),
+                                   pageLength = -1,
+                                   searchHighlight = TRUE,
+                                   # Scroll options 
+                                   # Set Y scroll as function of iframe height in ArcGIS Hub (550px)
+                                   scrollY = 550 - 200,
+                                   scrollX = TRUE,
+                                   scroller = TRUE,
+                                   # Column headers
+                                   fixedHeader = FALSE,
+                                   # Add font family
+                                   initComplete = JS(
+                                     "function(settings, json) {",
+                                     "$('body').css({'font-family': 'Whitney'});",
+                                     "}")
+                                   )) %>% 
+  # Column formatting
+  DT::formatDate("when_was_the_self_evaluation_plan_created_or_most_recently_updated",
+                 method = "toLocaleDateString") 
+# %>% 
+ # DT::formatRound(c("number_of_government_employees",
+ #                   "population"),
+ #                 digits = 0, mark = ",") %>% 
+ # DT::formatPercentage("percent_regional_population",
+    #                   digits = 1)
+
+# View
+ada_dt
+
+# Export as widget (local/sharing option)
+htmlwidgets::saveWidget(widget = ada_dt,
+                        file = "ada_transition_plans_dt.html",
+                        selfcontained = TRUE)
+
+# Export as widget for GitHub Pages (requires index.html name)
+htmlwidgets::saveWidget(widget = ada_dt,
+                        file = "index.html",
+                        selfcontained = TRUE)
+
