@@ -26,7 +26,7 @@ options(scipen = 1000, stringsAsFactors = FALSE)
 
 # Excel workbook download (manual)
 # Read in data
-ada_raw <- read_excel("240314_ADACompliance.xlsx") %>% 
+ada_raw <- read_excel(here("20250109_ADAcompliance_machinecln.xlsx")) %>% 
   clean_names()
 
 
@@ -44,10 +44,7 @@ ada_clean_all <- ada_raw %>%
          is_there_a_publicly_posted_notice_about_rights_under_the_ada,
          when_was_the_self_evaluation_plan_created_or_most_recently_updated,
          link_to_the_self_evaluation) %>% 
-  arrange(what_is_the_entity_name)
-
-# Clean ada_clean_all
-ada_clean_all <- ada_clean_all %>% 
+  arrange(what_is_the_entity_name) %>% 
   # Binaries to Yes/No if only 1 and 0, add N/As if exist
   mutate(across(c(is_a_transition_plan_required,
                   does_the_community_have_a_self_evaluation_plan,
@@ -66,15 +63,20 @@ ada_clean_all <- ada_clean_all %>%
                   TRUE ~
                     "N/A"))) %>% 
   # Format date field
-  mutate("when_was_the_self_evaluation_plan_created_or_most_recently_updated" = excel_numeric_to_date(as.numeric(when_was_the_self_evaluation_plan_created_or_most_recently_updated)))
+  mutate("when_was_the_self_evaluation_plan_created_or_most_recently_updated" = as.Date(when_was_the_self_evaluation_plan_created_or_most_recently_updated, format = "%m%d%Y")) %>% 
+  mutate("when_was_the_self_evaluation_plan_created_or_most_recently_updated" = format(when_was_the_self_evaluation_plan_created_or_most_recently_updated, format = "%m/%d/%Y"))
 
 # Create hyperlink for table ada_clean_all
 ada_clean_all <- ada_clean_all %>% 
-  mutate("pdf_link" = paste0('<a href="',
+  mutate("pdf_link" = ifelse(does_the_community_have_a_self_evaluation_plan == "No",
+                             what_is_the_entity_name,
+                             paste0(what_is_the_entity_name, ' <a href="',
                              link_to_the_self_evaluation,
-                             '" target="_blank">',
-                             what_is_the_entity_name, '</a>')) %>% 
+                             '" target="_blank">', "(link)",
+                             '</a>'))) %>% 
   relocate(pdf_link, .before = 1)
+
+
 
 # 4. DataTable ------------------------------------------------------------
 
@@ -82,7 +84,6 @@ ada_clean_all <- ada_clean_all %>%
 # R DT package, wrapper for the JavaScript DataTables library
 # Vignettes: https://rstudio.github.io/DT/
 # Documentation: https://cran.r-project.org/web/packages/DT/DT.pdf
-
 
 # Handle N/As for Date
 rowCallback <- c(
@@ -103,6 +104,10 @@ ada_dt <- datatable(ada_clean_all %>%
                       arrange(what_is_the_entity_name) %>% 
                       select(-what_is_the_entity_name,
                              -link_to_the_self_evaluation),
+                    # filter
+                    filter = "top",
+                    #Column name reformatting
+                    colnames = c('Municipality' = 1, 'Is a transition plan required' = 2, 'Self-evaluation' = 3, 'Transition Plan' = 4, 'ADA Coordinator?' = 5, 'Publicly available ADA grievance procedure' = 6, 'Publicly posted notice of ADA rights' = 7, 'When was the plan last updated?' = 8),
                     # Formatting options, escape = FALSE to allow hyperlink HTML formatting
                     extensions = "Scroller", escape = FALSE,
                     style = "auto", class = "cell-border stripe", 
@@ -125,10 +130,10 @@ ada_dt <- datatable(ada_clean_all %>%
                                      "function(settings, json) {",
                                      "$('body').css({'font-family': 'Whitney'});",
                                      "}")
-                                   )) %>% 
+                                   )) # %>% 
   # Column formatting
-  DT::formatDate("when_was_the_self_evaluation_plan_created_or_most_recently_updated",
-                 method = "toLocaleDateString") 
+  # DT::formatDate("'When was the plan last updated?",
+  #                method = "toLocaleDateString") 
 # %>% 
  # DT::formatRound(c("number_of_government_employees",
  #                   "population"),
